@@ -124,6 +124,7 @@ class MainWindow(QW.QWidget):
         for key, value in SOURCE.items():
             upItem = QW.QTreeWidgetItem()
             upItem.setText(0, key)
+            upItem.setData(0, QT.UserRole, os.path.join(ROOT, key))
             root.addChild(upItem)
             upItem.setExpanded(True)
             upItem.setFlags(QT.ItemIsEnabled | QT.ItemIsSelectable)
@@ -131,11 +132,12 @@ class MainWindow(QW.QWidget):
                 for i in value:
                     downItem = QW.QTreeWidgetItem()
                     downItem.setText(0, i)
+                    downItem.setData(0, QT.UserRole, os.path.join(ROOT, key, i))
                     downItem.setFlags(QT.ItemIsEnabled | QT.ItemIsSelectable)
                     upItem.addChild(downItem)
 
     def treeItem_click(self, item):
-        path = os.path.join(ROOT, item.text(0))
+        path = item.data(0, QT.UserRole)
         self.labelPath.setText(path)
         # self.loadDirectory(path)
 
