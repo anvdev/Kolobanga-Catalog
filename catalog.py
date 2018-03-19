@@ -19,11 +19,13 @@ ROOT = r'\\File-share\DATA\PROPS\C4D\MODELS'
 UPDATE_FILE = r'\\File-share_NEW\System\Updates\Catalog\release.exe'  # Windows only
 
 
-class MainWindow(QW.QWidget):
+class MainWindow(QW.QMainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
 
         # Common
+        self.widget = QW.QWidget(self)
+        self.setCentralWidget(self.widget)
         self.setWindowTitle('QCatalog')
         self.setMinimumSize(560, 160)
         self.resize(800, 600)
@@ -62,14 +64,15 @@ class MainWindow(QW.QWidget):
         self.modelsScene = QW.QGraphicsScene()
         self.modelsView = QW.QGraphicsView(self.modelsScene)
 
-        # self.statusBar = QW.QStatusBar()
+        self.statusBar = QW.QStatusBar()
+        self.setStatusBar(self.statusBar)
 
         # Layouts
         horizontalLayoutTop = QW.QHBoxLayout()
         horizontalLayoutTop.setContentsMargins(4, 4, 4, 2)
         horizontalLayoutBottom = QW.QHBoxLayout()
         horizontalLayoutBottom.setContentsMargins(4, 2, 4, 4)
-        verticalLayout = QW.QVBoxLayout(self)
+        verticalLayout = QW.QVBoxLayout(self.widget)
         verticalLayout.setSpacing(4)
         verticalLayout.setContentsMargins(4, 4, 4, 4)
         verticalLayout.addLayout(horizontalLayoutTop)
