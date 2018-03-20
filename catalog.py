@@ -76,24 +76,24 @@ class MainWindow(QW.QMainWindow):
         self.statusBar.addWidget(self.labelStatus)
 
         # Layouts
-        horizontalLayoutTop = QW.QHBoxLayout()
-        horizontalLayoutTop.setContentsMargins(4, 4, 4, 2)
-        horizontalLayoutBottom = QW.QHBoxLayout()
-        horizontalLayoutBottom.setContentsMargins(4, 2, 4, 4)
-        verticalLayout = QW.QVBoxLayout(self.widget)
-        verticalLayout.setSpacing(4)
-        verticalLayout.setContentsMargins(4, 4, 4, 0)
-        verticalLayout.addLayout(horizontalLayoutTop)
-        verticalLayout.addLayout(horizontalLayoutBottom)
+        self.horizontalLayoutTop = QW.QHBoxLayout()
+        self.horizontalLayoutTop.setContentsMargins(4, 4, 4, 2)
+        self.horizontalLayoutBottom = QW.QHBoxLayout()
+        self.horizontalLayoutBottom.setContentsMargins(4, 2, 4, 4)
+        self.verticalLayout = QW.QVBoxLayout(self.widget)
+        self.verticalLayout.setSpacing(4)
+        self.verticalLayout.setContentsMargins(4, 4, 4, 0)
+        self.verticalLayout.addLayout(self.horizontalLayoutTop)
+        self.verticalLayout.addLayout(self.horizontalLayoutBottom)
 
         # Fill Layouts
-        horizontalLayoutTop.addWidget(self.buttonFeedback)
-        horizontalLayoutTop.addWidget(self.buttonHelp)
-        horizontalLayoutTop.addWidget(self.buttonUpdate)
-        horizontalLayoutTop.addWidget(self.labelPath)
+        self.horizontalLayoutTop.addWidget(self.buttonFeedback)
+        self.horizontalLayoutTop.addWidget(self.buttonHelp)
+        self.horizontalLayoutTop.addWidget(self.buttonUpdate)
+        self.horizontalLayoutTop.addWidget(self.labelPath)
 
-        horizontalLayoutBottom.addWidget(self.treeView)
-        horizontalLayoutBottom.addWidget(self.modelsView)
+        self.horizontalLayoutBottom.addWidget(self.treeView)
+        self.horizontalLayoutBottom.addWidget(self.modelsView)
 
         # Initialization
         self.treeInit()
