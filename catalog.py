@@ -1,6 +1,7 @@
 import sys
 import os
 import subprocess
+import socket
 
 FREE = False
 
@@ -49,11 +50,11 @@ class MainWindow(QW.QMainWindow):
         else:
             self.buttonUpdate.setVisible(False)
 
-        self.labelPath = QW.QLabel('...')
-        self.labelPath.setCursor(QT.PointingHandCursor)
-        self.labelPath.setToolTip('Open Folder')
-        self.labelPath.setAlignment(QT.AlignCenter)
-        self.labelPath.keyPressEvent = self.openFolder
+        self.labelRoot = QW.QLabel('...')
+        self.labelRoot.setCursor(QT.PointingHandCursor)
+        self.labelRoot.setToolTip('Open Folder')
+        self.labelRoot.setAlignment(QT.AlignCenter)
+        self.labelRoot.mousePressEvent = self.openRoot
 
         self.treeView = QW.QTreeWidget()
         self.treeView.setFixedWidth(200)
@@ -61,13 +62,15 @@ class MainWindow(QW.QMainWindow):
         self.treeView.setCursor(QT.PointingHandCursor)
         self.treeView.itemClicked.connect(self.treeItem_click)
 
-        self.modelsView = QW.QListWidget()
+        self.modelsView = QW.QListWidget(self.widget)
         self.modelsView.setViewMode(QW.QListView.IconMode)
         self.modelsView.setResizeMode(QW.QListView.Adjust)
         self.modelsView.setDragDropMode(QW.QAbstractItemView.NoDragDrop)
         self.modelsView.setSelectionMode(QW.QAbstractItemView.ExtendedSelection)
         self.modelsView.setIconSize(QC.QSize(120, 90))
         self.modelsView.setSpacing(2)
+        self.modelsView.setContextMenuPolicy(QT.CustomContextMenu)
+        self.modelsView.customContextMenuRequested.connect(self.contextMenu)
 
         self.statusBar = QW.QStatusBar()
         self.statusBar.setContentsMargins(10, 0, 10, 5)
@@ -90,7 +93,7 @@ class MainWindow(QW.QMainWindow):
         self.horizontalLayoutTop.addWidget(self.buttonFeedback)
         self.horizontalLayoutTop.addWidget(self.buttonHelp)
         self.horizontalLayoutTop.addWidget(self.buttonUpdate)
-        self.horizontalLayoutTop.addWidget(self.labelPath)
+        self.horizontalLayoutTop.addWidget(self.labelRoot)
 
         self.horizontalLayoutBottom.addWidget(self.treeView)
         self.horizontalLayoutBottom.addWidget(self.modelsView)
@@ -153,20 +156,72 @@ class MainWindow(QW.QMainWindow):
 
     def treeItem_click(self, item):
         path = item.data(0, QT.UserRole)
-        self.labelPath.setText(path)
-        self.loadDirectory(path)
+        self.labelRoot.setText(path)
+        self.fillModelList(path)
 
     def updateApplication(self):
         pass
 
-    def contextMenu(self):
-        pass
+    def contextMenu(self, pos):
+        functions = {'Merge': self.mergeAction,
+                     'Open': self.openFileAction,
+                     'Open Folder': self.openFolderAction,
+                     'Preview': self.previewAction,
+                     'Copy Name': self.copyNameAction,
+                     'Copy Folder Link': self.copyFolderLinkAction,
+                     'Copy Model Link': self.copyModelLinkAction}
+        if self.modelsView.selectedItems():
+            actions = ['Merge',
+                       'Open',
+                       'Open Folder',
+                       '-',
+                       'Preview',
+                       '-',
+                       'Copy Name',
+                       'Copy Folder Link',
+                       'Copy Model Link']
+            menu = QW.QMenu()
+            for a in actions:
+                if a != '-':
+                    menu.addAction(QW.QAction(a, self))
+                else:
+                    menu.addSeparator()
+            try:
+                reacton = menu.exec_(QG.QCursor().pos())
+                functions.get(reacton.text())(self.modelsView.selectedItems())
+            except:
+                pass
 
-    def merge(self, modelLink):
-        pass
+    def mergeAction(self, items):
+        reply = None
+        if len(items) > 3:
+            reply = QW.QMessageBox.question(self, 'Merge Operation', f'Too many files ({len(items)}). Would you like to merge all?', QW.QMessageBox.Yes | QW.QMessageBox.No, QW.QMessageBox.Yes)
+            if reply == QW.QMessageBox.Yes or reply == None:
+                for item in items:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.connect(('127.0.0.1', 2900))
+                    link = item.data(QT.UserRole).replace('_tmb.jpg', '.c4d')
+                    sock.send(f'Content-Length: 300\nEncoding: binary\nFilename: {link}\nOrigin: Merge\nPassword: 7c9fb847d117531433435b68b61f91f6'.encode('ascii', 'ignore'))
+                    sock.close()
 
-    def open(self, modelLink):
-        os.system(os.path.join(ROOT, modelLink))
+    def openFile(self, fileLink):
+        if sys.platform.startswith('win'):
+            os.startfile(fileLink)
+        elif sys.platform == 'darwin':
+            pass
+        elif sys.platform.startswith('linux'):
+            pass
+        else:
+            QW.QMessageBox.warning(self, 'Unknown OS', "Can't open file on this OS!")
+
+    def openFileAction(self, items):
+        reply = None
+        if len(items) > 3:
+            reply = QW.QMessageBox.question(self, 'Open File Operation', f'Too many files ({len(items)}). Would you like to open all?', QW.QMessageBox.Yes | QW.QMessageBox.No, QW.QMessageBox.Yes)
+        if reply == QW.QMessageBox.Yes or reply == None:
+            data = []
+            for item in items:
+                self.openFile(item.data(QT.UserRole).replace('_tmb.jpg', '.c4d'))
 
     def openFolder(self, folderLink):
         if sys.platform.startswith('win'):
@@ -181,19 +236,51 @@ class MainWindow(QW.QMainWindow):
         else:
             QW.QMessageBox.warning(self, 'Unknown OS', "Can't open folder on this OS!")
 
-    def preview(self, previewLink):
-        pass # os.system(os.path.join(ROOT, previewLink))
+    def openFolderAction(self, items):
+        reply = None
+        if len(items) > 3:
+            reply = QW.QMessageBox.question(self, 'Open Folder Operation', f'Too many folders ({len(items)}). Would you like to open all?', QW.QMessageBox.Yes | QW.QMessageBox.No, QW.QMessageBox.Yes)
+        if reply == QW.QMessageBox.Yes or reply == None:
+            for item in items:
+                self.openFolder(os.path.dirname(item.data(QT.UserRole)))
 
-    def copyName(self):
-        pass
+    def preview(self, pictureLink):
+        if sys.platform.startswith('win'):
+            os.startfile(pictureLink)
+        elif sys.platform == 'darwin':
+            pass
+        elif sys.platform.startswith('linux'):
+            pass
+        else:
+            QW.QMessageBox.warning(self, 'Unknown OS', "Can't open preview on this OS!")
 
-    def copyFolderLink(self):
-        pass
+    def previewAction(self, items):
+        reply = None
+        if len(items) > 1:
+            reply = QW.QMessageBox.question(self, 'Preview Operation', f'Too many files ({len(items)}). Would you like to preview all?', QW.QMessageBox.Yes | QW.QMessageBox.No, QW.QMessageBox.Yes)
+        if reply == QW.QMessageBox.Yes or reply == None:
+            for item in items:
+                self.preview(item.data(QT.UserRole).replace('_tmb.', '_pre.'))
 
-    def copyModelLink(self):
-        pass
+    def copyNameAction(self, items):
+        data = []
+        for item in items:
+            data.append(os.path.basename(os.path.splitext(item.data(QT.UserRole))[0].replace('_tmb', '')))
+        app.clipboard().setText('\n'.join(data), QG.QClipboard.Clipboard)
 
-    def loadDirectory(self, path):
+    def copyFolderLinkAction(self, items):
+        data = []
+        for item in items:
+            data.append(os.path.dirname(item.data(QT.UserRole)))
+        app.clipboard().setText('\n'.join(data), QG.QClipboard.Clipboard)
+
+    def copyModelLinkAction(self, items):
+        data = []
+        for item in items:
+            data.append(item.data(QT.UserRole).replace('_tmb.jpg', '.c4d'))
+        app.clipboard().setText('\n'.join(data), QG.QClipboard.Clipboard)
+
+    def fillModelList(self, path):
         count = 0
         self.modelsView.clear()
         for root, folders, files in os.walk(path):
@@ -214,12 +301,16 @@ class MainWindow(QW.QMainWindow):
     def updateStatus(self, count):
         self.labelStatus.setText(f'Elements Count: {count}')
 
+    def openRoot(self, event: QG.QMouseEvent):
+        if self.labelRoot.text() != '...':
+            self.openFolder(self.labelRoot.text())
+
 if __name__ == '__main__':
     app = QW.QApplication(sys.argv)
 
     # # Style
-    # with open('style.qss', 'rt') as style:
-    #     app.setStyleSheet(style.read())
+    with open('style.qss', 'rt') as style:
+        app.setStyleSheet(style.read())
 
     window = MainWindow()
     window.show()
