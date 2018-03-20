@@ -6,13 +6,13 @@ FREE = False
 
 if FREE:
     from PySide2 import QtWidgets as QW
-    # from PySide2 import QtCore as QC
-    # from PySide2 import QtGui as QG
+    from PySide2 import QtCore as QC
+    from PySide2 import QtGui as QG
     from PySide2.QtCore import Qt as QT
 else:
     from PyQt5 import QtWidgets as QW
-    # from PyQt5 import QtCore as QC
-    # from PyQt5 import QtGui as QG
+    from PyQt5 import QtCore as QC
+    from PyQt5 import QtGui as QG
     from PyQt5.QtCore import Qt as QT
 
 ROOT = r'\\File-share\DATA\PROPS\C4D\MODELS'
@@ -27,7 +27,7 @@ class MainWindow(QW.QMainWindow):
         self.widget = QW.QWidget(self)
         self.setCentralWidget(self.widget)
         self.setWindowTitle('QCatalog')
-        self.setMinimumSize(560, 160)
+        self.setMinimumSize(540, 160)
         self.resize(800, 600)
 
         # Visual Elements
@@ -61,11 +61,19 @@ class MainWindow(QW.QMainWindow):
         self.treeView.setCursor(QT.PointingHandCursor)
         self.treeView.itemClicked.connect(self.treeItem_click)
 
-        self.modelsScene = QW.QGraphicsScene()
-        self.modelsView = QW.QGraphicsView(self.modelsScene)
+        self.modelsView = QW.QListWidget()
+        self.modelsView.setViewMode(QW.QListView.IconMode)
+        self.modelsView.setResizeMode(QW.QListView.Adjust)
+        self.modelsView.setDragDropMode(QW.QAbstractItemView.NoDragDrop)
+        self.modelsView.setSelectionMode(QW.QAbstractItemView.ExtendedSelection)
+        self.modelsView.setIconSize(QC.QSize(120, 90))
+        self.modelsView.setSpacing(2)
 
         self.statusBar = QW.QStatusBar()
+        self.statusBar.setContentsMargins(10, 0, 10, 5)
         self.setStatusBar(self.statusBar)
+        self.labelStatus = QW.QLabel()
+        self.statusBar.addWidget(self.labelStatus)
 
         # Layouts
         horizontalLayoutTop = QW.QHBoxLayout()
@@ -74,7 +82,7 @@ class MainWindow(QW.QMainWindow):
         horizontalLayoutBottom.setContentsMargins(4, 2, 4, 4)
         verticalLayout = QW.QVBoxLayout(self.widget)
         verticalLayout.setSpacing(4)
-        verticalLayout.setContentsMargins(4, 4, 4, 4)
+        verticalLayout.setContentsMargins(4, 4, 4, 0)
         verticalLayout.addLayout(horizontalLayoutTop)
         verticalLayout.addLayout(horizontalLayoutBottom)
 
@@ -101,7 +109,7 @@ class MainWindow(QW.QMainWindow):
 
     def treeInit(self):
         root = self.treeView.invisibleRootItem()
-        SOURCE = {'All': (),
+        SOURCE = {#'All': (),
                   'Items': (),
                   'Characters': ('Koloboks',
                                  'Animals',
@@ -113,8 +121,8 @@ class MainWindow(QW.QMainWindow):
                   'Transport': (),
                   'Locations': ('Alien Planet',
                                 'Antivirus Planet',
-                                'City Planet',
-                                'Fido Planet',
+                                'City',
+                                'Fido',
                                 'Homepage Oracle',
                                 'Kolobanga',
                                 'New Year',
@@ -124,6 +132,10 @@ class MainWindow(QW.QMainWindow):
                   'Buildings': (),
                   'Objects': (),
                   'Others': ()}
+        allItem = QW.QTreeWidgetItem()
+        allItem.setText(0, 'All')
+        allItem.setData(0, QT.UserRole, ROOT)
+        root.addChild(allItem)
         for key, value in SOURCE.items():
             upItem = QW.QTreeWidgetItem()
             upItem.setText(0, key)
@@ -135,14 +147,14 @@ class MainWindow(QW.QMainWindow):
                 for i in value:
                     downItem = QW.QTreeWidgetItem()
                     downItem.setText(0, i)
-                    downItem.setData(0, QT.UserRole, os.path.join(ROOT, key, i))
+                    downItem.setData(0, QT.UserRole, os.path.join(ROOT, key, i.replace(' ', '_')))
                     downItem.setFlags(QT.ItemIsEnabled | QT.ItemIsSelectable)
                     upItem.addChild(downItem)
 
     def treeItem_click(self, item):
         path = item.data(0, QT.UserRole)
         self.labelPath.setText(path)
-        # self.loadDirectory(path)
+        self.loadDirectory(path)
 
     def updateApplication(self):
         pass
@@ -181,9 +193,26 @@ class MainWindow(QW.QMainWindow):
     def copyModelLink(self):
         pass
 
-    def loadDirectory(self):
-        pass
+    def loadDirectory(self, path):
+        count = 0
+        self.modelsView.clear()
+        for root, folders, files in os.walk(path):
+            for file in files:
+                if file.endswith('_tmb.jpg'):
+                    link = os.path.join(root, file)
+                    vName = os.path.basename(link).replace('_tmb.jpg', '').replace('_', ' ').title()
+                    if len(vName) > 18:
+                        item = QW.QListWidgetItem(vName[:16] + '...')
+                    else:
+                        item = QW.QListWidgetItem(vName)
+                    item.setIcon(QG.QIcon(link))
+                    item.setData(QT.UserRole, link)
+                    self.modelsView.addItem(item)
+                    count += 1
+        self.updateStatus(count)
 
+    def updateStatus(self, count):
+        self.labelStatus.setText(f'Elements Count: {count}')
 
 if __name__ == '__main__':
     app = QW.QApplication(sys.argv)
