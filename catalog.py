@@ -79,6 +79,12 @@ class MainWindow(QW.QMainWindow):
         # self.infoPane = QW.QTextBrowser()
         # self.infoPane.setFixedWidth(220)
 
+        # self.previewImage = QW.QLabel()
+        # self.previewImage.setFixedSize(220, 160)
+        #
+        # self.infoPane = QW.QTextBrowser()
+        # self.infoPane.setFixedWidth(220)
+
         self.statusBar = QW.QStatusBar()
         self.statusBar.setContentsMargins(10, 0, 10, 5)
         self.setStatusBar(self.statusBar)
