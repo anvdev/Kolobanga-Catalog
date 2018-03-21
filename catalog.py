@@ -72,6 +72,12 @@ class MainWindow(QW.QMainWindow):
         self.modelsView.setContextMenuPolicy(QT.CustomContextMenu)
         self.modelsView.customContextMenuRequested.connect(self.contextMenu)
 
+        # self.previewImage = QW.QLabel()
+        # self.previewImage.setFixedSize(220, 160)
+        #
+        # self.infoPane = QW.QTextBrowser()
+        # self.infoPane.setFixedWidth(220)
+
         self.statusBar = QW.QStatusBar()
         self.statusBar.setContentsMargins(10, 0, 10, 5)
         self.setStatusBar(self.statusBar)
@@ -81,6 +87,7 @@ class MainWindow(QW.QMainWindow):
         # Layouts
         self.horizontalLayoutTop = QW.QHBoxLayout()
         self.horizontalLayoutTop.setContentsMargins(4, 4, 4, 2)
+        # self.verticalLayoutRight = QW.QVBoxLayout()
         self.horizontalLayoutBottom = QW.QHBoxLayout()
         self.horizontalLayoutBottom.setContentsMargins(4, 2, 4, 4)
         self.verticalLayout = QW.QVBoxLayout(self.widget)
@@ -97,6 +104,10 @@ class MainWindow(QW.QMainWindow):
 
         self.horizontalLayoutBottom.addWidget(self.treeView)
         self.horizontalLayoutBottom.addWidget(self.modelsView)
+
+        # self.horizontalLayoutBottom.addLayout(self.verticalLayoutRight)
+        # self.verticalLayoutRight.addWidget(self.previewImage)
+        # self.verticalLayoutRight.addWidget(self.infoPane)
 
         # Initialization
         self.treeInit()
@@ -169,12 +180,14 @@ class MainWindow(QW.QMainWindow):
                      'Preview': self.previewAction,
                      'Copy Name': self.copyNameAction,
                      'Copy Folder Link': self.copyFolderLinkAction,
-                     'Copy Model Link': self.copyModelLinkAction}
+                     'Copy Model Link': self.copyModelLinkAction,
+                     'Show Information': self.showInfo}
         if self.modelsView.selectedItems():
             actions = ['Merge',
                        'Open',
                        'Open Folder',
                        '-',
+                       'Show Information',
                        'Preview',
                        '-',
                        'Copy Name',
@@ -304,6 +317,15 @@ class MainWindow(QW.QMainWindow):
     def openRoot(self, event: QG.QMouseEvent):
         if self.labelRoot.text() != '...':
             self.openFolder(self.labelRoot.text())
+
+    # def showInfo(self, items):
+    #     if len(items) > 1:
+    #         # self.infoPane.setText(f'Items count: {len(items)}\n' + '\n'.join([os.path.split(item.data(QT.UserRole))[1] for item in items]))
+    #         self.infoPane.setText(f'Selected: {len(items)}\n' + '\n'.join([item.text() for item in items]))
+    #     else:
+    #         item = items[0]
+    #         self.infoPane.setText('Name: ' + item.text() + f'\nFile Size: {os.stat(item.data(QT.UserRole).replace("_tmb.jpg", ".c4d")).st_size / 1048576}'[:17])
+    #         self.previewImage.setPixmap(QG.QPixmap(item.data(QT.UserRole).replace("_tmb.", "_pre.")).scaledToWidth(220, QT.SmoothTransformation))
 
 if __name__ == '__main__':
     app = QW.QApplication(sys.argv)
