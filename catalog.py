@@ -3,7 +3,7 @@ import os
 import subprocess
 import socket
 
-FREE = False
+FREE = True
 
 if FREE:
     from PySide2 import QtWidgets as QW
