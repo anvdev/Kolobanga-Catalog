@@ -187,14 +187,14 @@ class MainWindow(QW.QMainWindow):
                      'Preview': self.previewAction,
                      'Copy Name': self.copyNameAction,
                      'Copy Folder Link': self.copyFolderLinkAction,
-                     'Copy Model Link': self.copyModelLinkAction,
-                     'Show Information': self.showInfo}
+                     'Copy Model Link': self.copyModelLinkAction}
+                     # 'Show Information': self.showInfo}
         if self.modelsView.selectedItems():
             actions = ['Merge',
                        'Open',
                        'Open Folder',
                        '-',
-                       'Show Information',
+                       # 'Show Information',
                        'Preview',
                        '-',
                        'Copy Name',
