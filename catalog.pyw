@@ -13,6 +13,7 @@ except ImportError:
     from PySide2.QtGui import *
 
 ROOT = r'\\File-share\DATA\PROPS\C4D\MODELS'
+EXTENSION = '.c4d'
 
 
 def openFile(fileLink):
@@ -24,24 +25,24 @@ def openFile(fileLink):
 
 
 def copyNameAction(items):
-    data = []
+    names = []
     for item in items:
-        data.append(os.path.basename(os.path.splitext(item.data(Qt.UserRole))[0].replace('_tmb', '')))
-    app.clipboard().setText('\n'.join(data), QClipboard.Clipboard)
+        names.append(os.path.basename(os.path.splitext(item.data(Qt.UserRole))[0].replace('_tmb', '')))
+    app.clipboard().setText('\n'.join(names), QClipboard.Clipboard)
 
 
 def copyFolderLinkAction(items):
-    data = []
+    folders = []
     for item in items:
-        data.append(os.path.dirname(item.data(Qt.UserRole)))
-    app.clipboard().setText('\n'.join(data), QClipboard.Clipboard)
+        folders.append(os.path.dirname(item.data(Qt.UserRole)))
+    app.clipboard().setText('\n'.join(folders), QClipboard.Clipboard)
 
 
 def copyModelLinkAction(items):
-    data = []
+    links = []
     for item in items:
-        data.append(item.data(Qt.UserRole).replace('_tmb.jpg', '.c4d'))
-    app.clipboard().setText('\n'.join(data), QClipboard.Clipboard)
+        links.append(item.data(Qt.UserRole).replace('_tmb.jpg', EXTENSION))
+    app.clipboard().setText('\n'.join(links), QClipboard.Clipboard)
 
 
 class MainWindow(QMainWindow):
@@ -66,6 +67,12 @@ class MainWindow(QMainWindow):
         self.labelRoot.setAlignment(Qt.AlignCenter)
         self.labelRoot.mousePressEvent = self.openRoot
 
+        self.previewSize = QSlider(Qt.Horizontal)
+        self.previewSize.setFixedWidth(100)
+        self.previewSize.setRange(10, 100)
+        self.previewSize.setValue(100)
+        self.previewSize.valueChanged.connect(self.changePreviewSize)
+
         self.treeView = QTreeWidget()
         self.treeView.setFixedWidth(200)
         self.treeView.header().hide()
@@ -79,15 +86,12 @@ class MainWindow(QMainWindow):
         self.modelsView.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.modelsView.setIconSize(QSize(120, 90))
         self.modelsView.setSpacing(2)
+        self.modelsView.setUniformItemSizes(True)
         self.modelsView.setContextMenuPolicy(Qt.CustomContextMenu)
         self.modelsView.customContextMenuRequested.connect(self.contextMenu)
         self.modelsView.doubleClicked.connect(lambda: self.previewAction(self.modelsView.selectedItems()))
 
-        self.statusBar = QStatusBar()
-        self.statusBar.setContentsMargins(10, 0, 10, 5)
-        self.setStatusBar(self.statusBar)
-        self.labelStatus = QLabel()
-        self.statusBar.addWidget(self.labelStatus)
+        self.statusBar().show()
 
         # Layouts
         self.horizontalLayoutTop = QHBoxLayout()
@@ -102,6 +106,7 @@ class MainWindow(QMainWindow):
 
         self.horizontalLayoutTop.addWidget(self.buttonHelp)
         self.horizontalLayoutTop.addWidget(self.labelRoot)
+        self.horizontalLayoutTop.addWidget(self.previewSize)
 
         self.horizontalLayoutBottom.addWidget(self.treeView)
         self.horizontalLayoutBottom.addWidget(self.modelsView)
@@ -112,12 +117,12 @@ class MainWindow(QMainWindow):
     def buttonHelp_click(self):
         QMessageBox.information(self, 'Help', ('Navigation: Arrows, Home, End, Page Up, Page Down\n'
                                                'Selection: Mouse + Ctrl or Shift, Ctrl + A\n'
-                                               'Import: Alt + RMB click, Context Menu > Merge\n'
+                                               'Import: Context Menu > Merge\n'
                                                'Preview: Double LMB click, Context Menu > Preview'))
 
     def treeInit(self):
         root = self.treeView.invisibleRootItem()
-        SOURCE = {
+        tree = {
             'Items': (),
             'Characters': ('Koloboks',
                            'Animals',
@@ -144,7 +149,7 @@ class MainWindow(QMainWindow):
         allItem.setText(0, 'All')
         allItem.setData(0, Qt.UserRole, ROOT)
         root.addChild(allItem)
-        for key, value in SOURCE.items():
+        for key, value in tree.items():
             upItem = QTreeWidgetItem()
             upItem.setText(0, key)
             upItem.setData(0, Qt.UserRole, os.path.join(ROOT, key))
@@ -261,11 +266,10 @@ class MainWindow(QMainWindow):
             for file in files:
                 if file.endswith('_tmb.jpg'):
                     link = os.path.join(root, file)
-                    vName = os.path.basename(link).replace('_tmb.jpg', '').replace('_', ' ').title()
-                    if len(vName) > 18:
-                        item = QListWidgetItem(vName[:16] + '...')
-                    else:
-                        item = QListWidgetItem(vName)
+                    name = os.path.basename(link).replace('_tmb.jpg', '').replace('_', ' ').title()
+                    item = QListWidgetItem(name)
+                    if len(name) > 18:
+                        item.setToolTip(name)
                     item.setIcon(QIcon(link))
                     item.setData(Qt.UserRole, link)
                     self.modelsView.addItem(item)
@@ -273,11 +277,15 @@ class MainWindow(QMainWindow):
         self.updateStatus(count)
 
     def updateStatus(self, count):
-        self.labelStatus.setText(f'Elements Count: {count}')
+        self.statusBar().showMessage(f'Elements Count: {count}')
 
     def openRoot(self, event):
         if self.labelRoot.text() != '...' and event.button() == Qt.LeftButton:
             self.openFolder(self.labelRoot.text())
+
+    def changePreviewSize(self, value):
+        self.modelsView.setIconSize(QSize(value/100 * 120, value/100 * 90))
+        self.previewSize.setToolTip(str(value))
 
 
 if __name__ == '__main__':
