@@ -1,7 +1,7 @@
-import sys
 import os
-import subprocess
 import socket
+import subprocess
+import sys
 
 try:
     from PyQt5.QtWidgets import *
@@ -45,6 +45,19 @@ def copyModelLinkAction(items):
     app.clipboard().setText('\n'.join(links), QClipboard.Clipboard)
 
 
+def match(pattern, word):
+    position = 0
+    index = 0
+    while index != len(pattern):
+        try:
+            new_position = word.index(pattern[index], position)
+        except ValueError:
+            return False
+        index += 1
+        position = new_position
+    return True
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
@@ -79,6 +92,10 @@ class MainWindow(QMainWindow):
         self.treeView.setCursor(Qt.PointingHandCursor)
         self.treeView.itemClicked.connect(self.treeItem_click)
 
+        self.searchBar = QLineEdit()
+        self.searchBar.setPlaceholderText('Search...')
+        self.searchBar.textChanged.connect(self.filterModels)
+
         self.modelsView = QListWidget(self.widget)
         self.modelsView.setViewMode(QListView.IconMode)
         self.modelsView.setResizeMode(QListView.Adjust)
@@ -108,8 +125,12 @@ class MainWindow(QMainWindow):
         self.horizontalLayoutTop.addWidget(self.labelRoot)
         self.horizontalLayoutTop.addWidget(self.previewSize)
 
+        self.horizontalLayoutModels = QVBoxLayout()
+        self.horizontalLayoutModels.addWidget(self.searchBar)
+        self.horizontalLayoutModels.addWidget(self.modelsView)
+
         self.horizontalLayoutBottom.addWidget(self.treeView)
-        self.horizontalLayoutBottom.addWidget(self.modelsView)
+        self.horizontalLayoutBottom.addLayout(self.horizontalLayoutModels)
 
         # Initialization
         self.treeInit()
@@ -284,8 +305,15 @@ class MainWindow(QMainWindow):
             self.openFolder(self.labelRoot.text())
 
     def changePreviewSize(self, value):
-        self.modelsView.setIconSize(QSize(value/100 * 120, value/100 * 90))
+        self.modelsView.setIconSize(QSize(value / 100 * 120, value / 100 * 90))
         self.previewSize.setToolTip(str(value))
+
+    def filterModels(self):
+        for item in (self.modelsView.item(i) for i in range(self.modelsView.count())):
+            if match(self.searchBar.text().lower(), item.text().lower()):
+                item.setHidden(False)
+            else:
+                item.setHidden(True)
 
 
 if __name__ == '__main__':
