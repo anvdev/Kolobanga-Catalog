@@ -1,7 +1,14 @@
 import os
 import socket
+import sqlite3
 import subprocess
 import sys
+from collections import namedtuple
+
+try:
+    import hou
+except ImportError:
+    pass
 
 try:
     from PyQt5.QtWidgets import *
@@ -13,7 +20,10 @@ except ImportError:
     from PySide2.QtGui import *
 
 ROOT = r'\\File-share\DATA\PROPS\C4D\MODELS'
-EXTENSION = '.c4d'
+DBFILE = r'\\File-share_new\system\HSITE\catalog.db'
+
+CINEMA4D = 0
+HOUDINIFX = 1
 
 
 def openFile(fileLink):
@@ -22,27 +32,6 @@ def openFile(fileLink):
     else:
         opener = "open" if sys.platform == "darwin" else "xdg-open"
         subprocess.call([opener, fileLink])
-
-
-def copyNameAction(items):
-    names = []
-    for item in items:
-        names.append(os.path.basename(os.path.splitext(item.data(Qt.UserRole))[0].replace('_tmb', '')))
-    app.clipboard().setText('\n'.join(names), QClipboard.Clipboard)
-
-
-def copyFolderLinkAction(items):
-    folders = []
-    for item in items:
-        folders.append(os.path.dirname(item.data(Qt.UserRole)))
-    app.clipboard().setText('\n'.join(folders), QClipboard.Clipboard)
-
-
-def copyModelLinkAction(items):
-    links = []
-    for item in items:
-        links.append(item.data(Qt.UserRole).replace('_tmb.jpg', EXTENSION))
-    app.clipboard().setText('\n'.join(links), QClipboard.Clipboard)
 
 
 def match(pattern, word):
@@ -54,152 +43,111 @@ def match(pattern, word):
         except ValueError:
             return False
         index += 1
-        position = new_position
+        position = new_position + 1
     return True
 
 
-class MainWindow(QMainWindow):
+class SearchField(QComboBox):
+    def __init__(self, parent=None):
+        super(SearchField, self).__init__(parent)
+        self.setEditable(True)
+        completer = self.completer()
+        completer.setCompletionMode(QCompleter.PopupCompletion)
+        completer.setFilterMode(Qt.MatchContains)
+        completer.setModelSorting(QCompleter.CaseInsensitivelySortedModel)
+        completer.setMaxVisibleItems(5)
+        popup = completer.popup()
+        popup.setIconSize(QSize(64, 64))
+        popup.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        clearAction = QAction('Clear', self)
+        clearAction.setShortcut(QKeySequence(Qt.Key_Escape))
+        clearAction.triggered.connect(lambda: self.clearEditText())
+
+        self.addAction(clearAction)
+
+
+class AssetList(QListWidget):
+    def __init__(self, parent=None):
+        super(AssetList, self).__init__(parent)
+        self.setViewMode(QListView.IconMode)
+        self.setResizeMode(QListView.Adjust)
+        self.setDragDropMode(QAbstractItemView.NoDragDrop)
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.verticalScrollBar().setSingleStep(30)
+        self.setIconSize(QSize(120, 90))
+        self.setUniformItemSizes(True)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+
+
+class MainWindow(QWidget):
     def __init__(self):
         super(MainWindow, self).__init__()
 
         # Common
-        self.widget = QWidget(self)
-        self.setCentralWidget(self.widget)
-        self.setWindowTitle('QCatalog')
+        self.setWindowTitle('Catalog 4')
         self.setMinimumSize(540, 160)
-        self.resize(800, 600)
+        self.resize(1300, 720)
 
-        # Visual Elements
-        self.buttonHelp = QPushButton('Help')
-        self.buttonHelp.setFixedSize(80, 25)
-        self.buttonHelp.clicked.connect(self.buttonHelp_click)
+        # Houdini
+        self.setProperty("houdiniStyle", True)
 
-        self.labelRoot = QLabel('...')
-        self.labelRoot.setCursor(Qt.PointingHandCursor)
-        self.labelRoot.setToolTip('Open Folder')
-        self.labelRoot.setAlignment(Qt.AlignCenter)
-        self.labelRoot.mousePressEvent = self.openRoot
+        # UI
+        self.statusBar = QStatusBar()
 
-        self.previewSize = QSlider(Qt.Horizontal)
-        self.previewSize.setFixedWidth(100)
-        self.previewSize.setRange(10, 100)
-        self.previewSize.setValue(100)
-        self.previewSize.valueChanged.connect(self.changePreviewSize)
+        self.searchBar = SearchField()
+        self.searchBar.lineEdit().setPlaceholderText('Search...')
+        self.searchBar.currentTextChanged.connect(self.filterAssets)
 
-        self.treeView = QTreeWidget()
-        self.treeView.setFixedWidth(200)
-        self.treeView.header().hide()
-        self.treeView.setCursor(Qt.PointingHandCursor)
-        self.treeView.itemClicked.connect(self.treeItem_click)
+        self.assetList = AssetList()
+        self.assetList.itemSelectionChanged.connect(self.updateStatus)
+        self.assetList.customContextMenuRequested.connect(self.contextMenu)
+        self.assetList.doubleClicked.connect(self.showAssetPreview)
+        self.updateAssetList()
 
-        self.searchBar = QLineEdit()
-        self.searchBar.setPlaceholderText('Search...')
-        self.searchBar.textChanged.connect(self.filterModels)
+        # undoSearchAction = QAction('Undo Search', self.assetList)
+        # undoSearchAction.setShortcuts((QKeySequence('Ctrl+Z'), QKeySequence('Alt+Z')))
+        # undoSearchAction.triggered.connect(self.searchBar.lineEdit().undo)
+        # self.addAction(undoSearchAction)
+        #
+        # redoSearchAction = QAction('Redo Search', self.assetList)
+        # redoSearchAction.setShortcuts((QKeySequence('Ctrl+Shift+Z'), QKeySequence('Alt+Shift+Z')))
+        # redoSearchAction.triggered.connect(self.searchBar.lineEdit().redo)
+        # self.addAction(redoSearchAction)
 
-        self.modelsView = QListWidget(self.widget)
-        self.modelsView.setViewMode(QListView.IconMode)
-        self.modelsView.setResizeMode(QListView.Adjust)
-        self.modelsView.setDragDropMode(QAbstractItemView.NoDragDrop)
-        self.modelsView.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        self.modelsView.setIconSize(QSize(120, 90))
-        self.modelsView.setSpacing(2)
-        self.modelsView.setUniformItemSizes(True)
-        self.modelsView.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.modelsView.customContextMenuRequested.connect(self.contextMenu)
-        self.modelsView.doubleClicked.connect(lambda: self.previewAction(self.modelsView.selectedItems()))
+        updateAssetListAction = QAction('Update Asset List', self)
+        updateAssetListAction.setShortcut(QKeySequence(Qt.Key_F5))
+        updateAssetListAction.triggered.connect(self.updateAssetList)
+        self.addAction(updateAssetListAction)
 
-        self.statusBar().show()
+        searchAction = QAction('Search', self.assetList)
+        searchAction.setShortcuts((QKeySequence('Ctrl+F'), QKeySequence('Alt+F'), QKeySequence(Qt.Key_F3)))
+        searchAction.triggered.connect(self.doSearch)
+        self.addAction(searchAction)
 
         # Layouts
-        self.horizontalLayoutTop = QHBoxLayout()
-        self.horizontalLayoutTop.setContentsMargins(4, 4, 4, 2)
-        self.horizontalLayoutBottom = QHBoxLayout()
-        self.horizontalLayoutBottom.setContentsMargins(4, 2, 4, 4)
-        self.verticalLayout = QVBoxLayout(self.widget)
-        self.verticalLayout.setSpacing(4)
-        self.verticalLayout.setContentsMargins(4, 4, 4, 0)
-        self.verticalLayout.addLayout(self.horizontalLayoutTop)
-        self.verticalLayout.addLayout(self.horizontalLayoutBottom)
+        self.verticalLayout = QVBoxLayout(self)
+        self.verticalLayout.setSpacing(0)
+        self.verticalLayout.setContentsMargins(0, 0, 0, 0)
+        self.verticalLayout.addWidget(self.searchBar)
+        self.verticalLayout.addWidget(self.assetList)
+        self.verticalLayout.addWidget(self.statusBar)
 
-        self.horizontalLayoutTop.addWidget(self.buttonHelp)
-        self.horizontalLayoutTop.addWidget(self.labelRoot)
-        self.horizontalLayoutTop.addWidget(self.previewSize)
-
-        self.horizontalLayoutModels = QVBoxLayout()
-        self.horizontalLayoutModels.addWidget(self.searchBar)
-        self.horizontalLayoutModels.addWidget(self.modelsView)
-
-        self.horizontalLayoutBottom.addWidget(self.treeView)
-        self.horizontalLayoutBottom.addLayout(self.horizontalLayoutModels)
-
-        # Initialization
-        self.treeInit()
-
-    def buttonHelp_click(self):
-        QMessageBox.information(self, 'Help', ('Navigation: Arrows, Home, End, Page Up, Page Down\n'
-                                               'Selection: Mouse + Ctrl or Shift, Ctrl + A\n'
-                                               'Import: Context Menu > Merge\n'
-                                               'Preview: Double LMB click, Context Menu > Preview'))
-
-    def treeInit(self):
-        root = self.treeView.invisibleRootItem()
-        tree = {
-            'Items': (),
-            'Characters': ('Koloboks',
-                           'Animals',
-                           'Viruses',
-                           'Fido',
-                           'Aliens',
-                           'Draft',
-                           'Others'),
-            'Transport': (),
-            'Locations': ('Alien Planet',
-                          'Antivirus Planet',
-                          'City',
-                          'Fido',
-                          'Homepage Oracle',
-                          'Kolobanga',
-                          'New Year',
-                          'SocialNet',
-                          'Valley',
-                          'Wiki'),
-            'Buildings': (),
-            'Objects': (),
-            'Others': ()}
-        allItem = QTreeWidgetItem()
-        allItem.setText(0, 'All')
-        allItem.setData(0, Qt.UserRole, ROOT)
-        root.addChild(allItem)
-        for key, value in tree.items():
-            upItem = QTreeWidgetItem()
-            upItem.setText(0, key)
-            upItem.setData(0, Qt.UserRole, os.path.join(ROOT, key))
-            root.addChild(upItem)
-            upItem.setExpanded(True)
-            upItem.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-            if value:
-                for i in value:
-                    downItem = QTreeWidgetItem()
-                    downItem.setText(0, i)
-                    downItem.setData(0, Qt.UserRole, os.path.join(ROOT, key, i.replace(' ', '_')))
-                    downItem.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-                    upItem.addChild(downItem)
-
-    def treeItem_click(self, item):
-        path = item.data(0, Qt.UserRole)
-        self.labelRoot.setText(path)
-        self.fillModelList(path)
+    def doSearch(self):
+        self.searchBar.setFocus()
+        self.searchBar.lineEdit().selectAll()
 
     def contextMenu(self):
-        functions = {'Merge': self.mergeAction,
-                     'Open': self.openFileAction,
-                     'Open Folder': self.openFolderAction,
-                     'Preview': self.previewAction,
-                     'Copy Name': copyNameAction,
-                     'Copy Folder Link': copyFolderLinkAction,
-                     'Copy Model Link': copyModelLinkAction}
-        if self.modelsView.selectedItems():
-            actions = ['Merge',
+        functions = {'Load': self.loadAsset,
+                     'Open': self.openAsset,
+                     'Open Folder': self.openAssetFolder,
+                     'Preview': self.showAssetPreview,
+                     'Copy Name': self.copyAssetName,
+                     'Copy Folder Link': self.copyAssetFolderLink,
+                     'Copy Model Link': self.copyAssetLink}
+        if self.assetList.selectedItems():
+            actions = ['Load',
                        'Open',
                        'Open Folder',
                        '-',
@@ -216,36 +164,85 @@ class MainWindow(QMainWindow):
                     menu.addSeparator()
             try:
                 reaction = menu.exec_(QCursor().pos())
-                functions.get(reaction.text())(self.modelsView.selectedItems())
+                functions.get(reaction.text())()
             except AttributeError:
                 pass
 
-    def mergeAction(self, items):
+    def updateAssetList(self):
+        try:
+            with sqlite3.connect(DBFILE) as db:
+                c = db.cursor()
+                self.assetList.blockSignals(True)
+                self.searchBar.blockSignals(True)
+                self.assetList.clear()
+                self.searchBar.clear()
+                c.execute('SELECT * FROM Assets ORDER BY FILENAME ASC;')
+                AssetDataItem = namedtuple('AssetDataItem',
+                                           'ID NAME LABEL APPLICATION VERSION FOLDER FILENAME PREVIEWFILE'
+                                           ' CREATOR HASGHOST HASLOWPOLY HASHIGHPOLY HASRIG POINTCOUNT'
+                                           ' POLYCOUNT TYPE HASSIZE MAXX MINX MAXY MINY MAXZ MINZ SIZEX'
+                                           ' SIZEY SIZEZ CTIME MTIME TAGS THUMBNAIL')
+                for data in c.fetchall():
+                    assetData = AssetDataItem(*data)._asdict()
+                    tmb = QPixmap()
+                    tmb.loadFromData(bytes(assetData.get('THUMBNAIL')))
+                    icon = QIcon(tmb)
+                    item = QListWidgetItem(icon, assetData.get('LABEL'), self.assetList)
+                    item.setData(Qt.UserRole, assetData)
+                    if len(assetData.get('LABEL')) > 18:
+                        item.setToolTip(assetData.get('LABEL'))
+                    self.searchBar.addItem(icon, assetData.get('LABEL'))
+                self.assetList.blockSignals(False)
+                self.searchBar.clearEditText()
+                self.searchBar.blockSignals(False)
+                self.updateStatus()
+        except sqlite3.OperationalError:
+            pass
+
+    def loadCinema4DAsset(self, path):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect(('127.0.0.1', 2900))
+        sock.send(
+            'Content-Length: 300\nEncoding: binary\nFilename: {0}\n'
+            'Origin: Merge\nPassword: 7c9fb847d117531433435b68b61f91f6'.format(
+                path).encode('ascii', 'ignore'))
+        sock.close()
+
+    def loadHoudiniAsset(self, path):
+        hou.hda.installFile(path)
+        obj = hou.node('/obj')
+        for definition in hou.hda.definitionsInFile(path):
+            asset = definition.nodeTypeName()
+            node = obj.createNode(asset)
+            node.moveToGoodPosition()
+
+    def loadAsset(self):
         reply = None
+        items = self.assetList.selectedItems()
         if len(items) > 3:
             reply = QMessageBox.question(self, 'Merge Operation',
-                                         f'Too many files ({len(items)}). Would you like to merge all?',
+                                         'Too many files ({0}). Would you like to merge all?'.format(len(items)),
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply == QMessageBox.Yes or reply is None:
             for item in items:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.connect(('127.0.0.1', 2900))
-                link = item.data(Qt.UserRole).replace('_tmb.jpg', '.c4d')
-                sock.send(
-                    f'Content-Length: 300\nEncoding: binary\nFilename: {link}\nOrigin: Merge\nPassword: '
-                    f'7c9fb847d117531433435b68b61f91f6'.encode(
-                        'ascii', 'ignore'))
-                sock.close()
+                assetData = item.data(Qt.UserRole)
+                filename = os.path.join(assetData.get('FOLDER'), assetData.get('FILENAME'))
+                if assetData.get('APPLICATION ') == CINEMA4D:
+                    self.loadCinema4DAsset(filename)
+                elif assetData.get('APPLICATION') == HOUDINIFX:
+                    self.loadHoudiniAsset(filename)
 
-    def openFileAction(self, items):
+    def openAsset(self):
         reply = None
+        items = self.assetList.selectedItems()
         if len(items) > 3:
             reply = QMessageBox.question(self, 'Open File Operation',
-                                         f'Too many files ({len(items)}). Would you like to open all?',
+                                         'Too many files ({0}). Would you like to open all?'.format(len(items)),
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply == QMessageBox.Yes or reply is None:
             for item in items:
-                openFile(item.data(Qt.UserRole).replace('_tmb.jpg', '.c4d'))
+                assetData = item.data(Qt.UserRole)
+                openFile(os.path.join(assetData.get('FOLDER'), assetData.get('FILENAME')))
 
     def openFolder(self, folderLink):
         if sys.platform.startswith('win'):
@@ -260,63 +257,79 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.warning(self, 'Unknown OS', "Can't open folder on this OS!")
 
-    def openFolderAction(self, items):
+    def openAssetFolder(self):
         reply = None
+        items = self.assetList.selectedItems()
         if len(items) > 3:
             reply = QMessageBox.question(self, 'Open Folder Operation',
-                                         f'Too many folders ({len(items)}). Would you like to open all?',
+                                         'Too many folders ({0}). Would you like to open all?'.format(len(items)),
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply == QMessageBox.Yes or reply is None:
             for item in items:
-                self.openFolder(os.path.dirname(item.data(Qt.UserRole)))
+                self.openFolder(item.data(Qt.UserRole).get('FOLDER'))
 
-    def previewAction(self, items):
+    def showAssetPreview(self):
         reply = None
+        items = self.assetList.selectedItems()
         if len(items) > 1:
             reply = QMessageBox.question(self, 'Preview Operation',
-                                         f'Too many files ({len(items)}). Would you like to preview all?',
+                                         'Too many files ({0}). Would you like to preview all?'.format(len(items)),
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply == QMessageBox.Yes or reply is None:
             for item in items:
-                openFile(item.data(Qt.UserRole).replace('_tmb.', '_pre.'))
+                openFile(item.data(Qt.UserRole).get('PREVIEWFILE'))
 
-    def fillModelList(self, path):
-        count = 0
-        self.modelsView.clear()
-        for root, folders, files in os.walk(path):
-            for file in files:
-                if file.endswith('_tmb.jpg'):
-                    link = os.path.join(root, file)
-                    name = os.path.basename(link).replace('_tmb.jpg', '').replace('_', ' ').title()
-                    item = QListWidgetItem(name)
-                    if len(name) > 18:
-                        item.setToolTip(name)
-                    item.setIcon(QIcon(link))
-                    item.setData(Qt.UserRole, link)
-                    self.modelsView.addItem(item)
-                    count += 1
-        self.updateStatus(count)
+    def updateStatus(self):
+        message = 'Assets: {0}'.format(self.assetList.count())
+        selectedItems = self.assetList.selectedItems()
+        if selectedItems:
+            message += '    Selected: {0}'.format(len(selectedItems))
+        self.statusBar.showMessage(message)
 
-    def updateStatus(self, count):
-        self.statusBar().showMessage(f'Elements Count: {count}')
-
-    def openRoot(self, event):
-        if self.labelRoot.text() != '...' and event.button() == Qt.LeftButton:
-            self.openFolder(self.labelRoot.text())
-
-    def changePreviewSize(self, value):
-        self.modelsView.setIconSize(QSize(value / 100 * 120, value / 100 * 90))
-        self.previewSize.setToolTip(str(value))
-
-    def filterModels(self):
-        for item in (self.modelsView.item(i) for i in range(self.modelsView.count())):
-            if match(self.searchBar.text().lower(), item.text().lower()):
+    def filterAssets(self):
+        for item in (self.assetList.item(i) for i in range(self.assetList.count())):
+            if match(self.searchBar.currentText().lower(), item.text().lower()):
                 item.setHidden(False)
             else:
                 item.setHidden(True)
+                item.setSelected(False)
+
+    def copyAssetLink(self):
+        links = []
+        items = self.assetList.selectedItems()
+        for item in items:
+            assetData = item.data(Qt.UserRole)
+            links.append(os.path.join(assetData.get('FOLDER'), assetData.get('FILENAME')))
+        app.clipboard().setText('\n'.join(links), QClipboard.Clipboard)
+
+    def copyAssetName(self):
+        names = []
+        items = self.assetList.selectedItems()
+        for item in items:
+            names.append(item.data(Qt.UserRole).get('NAME'))
+        app.clipboard().setText('\n'.join(names), QClipboard.Clipboard)
+
+    def copyAssetFolderLink(self):
+        folders = []
+        items = self.assetList.selectedItems()
+        for item in items:
+            folders.append(item.data(Qt.UserRole).get('FOLDER'))
+        app.clipboard().setText('\n'.join(folders), QClipboard.Clipboard)
+
+
+def onCreateInterface():
+    global catalog
+    catalog = MainWindow()
+    return catalog
 
 
 if __name__ == '__main__':
+    def my_excepthook(type, value, tback):
+        sys.__excepthook__(type, value, tback)
+
+
+    sys.excepthook = my_excepthook
+
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
