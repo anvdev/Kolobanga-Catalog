@@ -22,8 +22,10 @@ except ImportError:
 ROOT = r'\\File-share\DATA\PROPS\C4D\MODELS'
 DBFILE = r'\\File-share_new\system\HSITE\catalog.db'
 
-CINEMA4D = 0
-HOUDINIFX = 1
+
+class Application:
+    Cinema4D = 0
+    HoudiniFx = 1
 
 
 def openFile(fileLink):
@@ -63,7 +65,6 @@ class SearchField(QComboBox):
         clearAction = QAction('Clear', self)
         clearAction.setShortcut(QKeySequence(Qt.Key_Escape))
         clearAction.triggered.connect(lambda: self.clearEditText())
-
         self.addAction(clearAction)
 
 
@@ -81,9 +82,28 @@ class AssetList(QListWidget):
         self.setContextMenuPolicy(Qt.CustomContextMenu)
 
 
-class MainWindow(QWidget):
-    def __init__(self):
-        super(MainWindow, self).__init__()
+def loadCinema4DAsset(path):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.connect(('127.0.0.1', 2900))
+    sock.send(
+        'Content-Length: 300\nEncoding: binary\nFilename: {0}\n'
+        'Origin: Merge\nPassword: 7c9fb847d117531433435b68b61f91f6'.format(
+            path).encode('ascii', 'ignore'))
+    sock.close()
+
+
+def loadHoudiniAsset(path):
+    hou.hda.installFile(path)
+    obj = hou.node('/obj')
+    for definition in hou.hda.definitionsInFile(path):
+        asset = definition.nodeTypeName()
+        node = obj.createNode(asset)
+        node.moveToGoodPosition()
+
+
+class CatalogWidget(QWidget):
+    def __init__(self, parent=None):
+        super(CatalogWidget, self).__init__(parent)
 
         # Common
         self.setWindowTitle('Catalog 4')
@@ -105,16 +125,6 @@ class MainWindow(QWidget):
         self.assetList.customContextMenuRequested.connect(self.contextMenu)
         self.assetList.doubleClicked.connect(self.showAssetPreview)
         self.updateAssetList()
-
-        # undoSearchAction = QAction('Undo Search', self.assetList)
-        # undoSearchAction.setShortcuts((QKeySequence('Ctrl+Z'), QKeySequence('Alt+Z')))
-        # undoSearchAction.triggered.connect(self.searchBar.lineEdit().undo)
-        # self.addAction(undoSearchAction)
-        #
-        # redoSearchAction = QAction('Redo Search', self.assetList)
-        # redoSearchAction.setShortcuts((QKeySequence('Ctrl+Shift+Z'), QKeySequence('Alt+Shift+Z')))
-        # redoSearchAction.triggered.connect(self.searchBar.lineEdit().redo)
-        # self.addAction(redoSearchAction)
 
         updateAssetListAction = QAction('Update Asset List', self)
         updateAssetListAction.setShortcut(QKeySequence(Qt.Key_F5))
@@ -178,10 +188,8 @@ class MainWindow(QWidget):
                 self.searchBar.clear()
                 c.execute('SELECT * FROM Assets ORDER BY FILENAME ASC;')
                 AssetDataItem = namedtuple('AssetDataItem',
-                                           'ID NAME LABEL APPLICATION VERSION FOLDER FILENAME PREVIEWFILE'
-                                           ' CREATOR HASGHOST HASLOWPOLY HASHIGHPOLY HASRIG POINTCOUNT'
-                                           ' POLYCOUNT TYPE HASSIZE MAXX MINX MAXY MINY MAXZ MINZ SIZEX'
-                                           ' SIZEY SIZEZ CTIME MTIME TAGS THUMBNAIL')
+                                           'ID NAME LABEL APPLICATION VERSION FOLDER'
+                                           ' FILENAME PREVIEWFILE CLASS TAGS THUMBNAIL')
                 for data in c.fetchall():
                     assetData = AssetDataItem(*data)._asdict()
                     tmb = QPixmap()
@@ -199,27 +207,11 @@ class MainWindow(QWidget):
         except sqlite3.OperationalError:
             pass
 
-    def loadCinema4DAsset(self, path):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect(('127.0.0.1', 2900))
-        sock.send(
-            'Content-Length: 300\nEncoding: binary\nFilename: {0}\n'
-            'Origin: Merge\nPassword: 7c9fb847d117531433435b68b61f91f6'.format(
-                path).encode('ascii', 'ignore'))
-        sock.close()
-
-    def loadHoudiniAsset(self, path):
-        hou.hda.installFile(path)
-        obj = hou.node('/obj')
-        for definition in hou.hda.definitionsInFile(path):
-            asset = definition.nodeTypeName()
-            node = obj.createNode(asset)
-            node.moveToGoodPosition()
-
     def loadAsset(self):
         reply = None
         items = self.assetList.selectedItems()
         if len(items) > 3:
+            # noinspection PyTypeChecker
             reply = QMessageBox.question(self, 'Merge Operation',
                                          'Too many files ({0}). Would you like to merge all?'.format(len(items)),
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
@@ -227,15 +219,16 @@ class MainWindow(QWidget):
             for item in items:
                 assetData = item.data(Qt.UserRole)
                 filename = os.path.join(assetData.get('FOLDER'), assetData.get('FILENAME'))
-                if assetData.get('APPLICATION ') == CINEMA4D:
-                    self.loadCinema4DAsset(filename)
-                elif assetData.get('APPLICATION') == HOUDINIFX:
-                    self.loadHoudiniAsset(filename)
+                if assetData.get('APPLICATION ') == Application.Cinema4D:
+                    loadCinema4DAsset(filename)
+                elif assetData.get('APPLICATION') == Application.HoudiniFx:
+                    loadHoudiniAsset(filename)
 
     def openAsset(self):
         reply = None
         items = self.assetList.selectedItems()
         if len(items) > 3:
+            # noinspection PyTypeChecker
             reply = QMessageBox.question(self, 'Open File Operation',
                                          'Too many files ({0}). Would you like to open all?'.format(len(items)),
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
@@ -261,6 +254,7 @@ class MainWindow(QWidget):
         reply = None
         items = self.assetList.selectedItems()
         if len(items) > 3:
+            # noinspection PyTypeChecker
             reply = QMessageBox.question(self, 'Open Folder Operation',
                                          'Too many folders ({0}). Would you like to open all?'.format(len(items)),
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
@@ -272,6 +266,7 @@ class MainWindow(QWidget):
         reply = None
         items = self.assetList.selectedItems()
         if len(items) > 1:
+            # noinspection PyTypeChecker
             reply = QMessageBox.question(self, 'Preview Operation',
                                          'Too many files ({0}). Would you like to preview all?'.format(len(items)),
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
@@ -318,9 +313,7 @@ class MainWindow(QWidget):
 
 
 def onCreateInterface():
-    global catalog
-    catalog = MainWindow()
-    return catalog
+    return CatalogWidget()
 
 
 if __name__ == '__main__':
@@ -331,6 +324,6 @@ if __name__ == '__main__':
     sys.excepthook = my_excepthook
 
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = CatalogWidget()
     window.show()
     sys.exit(app.exec_())
