@@ -19,8 +19,7 @@ except ImportError:
     from PySide2.QtCore import *
     from PySide2.QtGui import *
 
-ROOT = r'\\File-share\DATA\PROPS\C4D\MODELS'
-DBFILE = r'\\File-share_new\system\HSITE\catalog.db'
+CATALOG_DB = r'\\File-share_new\system\HSITE\catalog.db'
 
 
 class Application:
@@ -180,26 +179,27 @@ class CatalogWidget(QWidget):
 
     def updateAssetList(self):
         try:
-            with sqlite3.connect(DBFILE) as db:
+            with sqlite3.connect(CATALOG_DB) as db:
                 c = db.cursor()
                 self.assetList.blockSignals(True)
                 self.searchBar.blockSignals(True)
                 self.assetList.clear()
                 self.searchBar.clear()
-                c.execute('SELECT * FROM Assets ORDER BY FILENAME ASC;')
+                c.execute(
+                    'SELECT name, label, local_label, folder, filename, category FROM asset ORDER BY filename ASC;')
                 AssetDataItem = namedtuple('AssetDataItem',
-                                           'ID NAME LABEL APPLICATION VERSION FOLDER'
-                                           ' FILENAME PREVIEWFILE CLASS TAGS THUMBNAIL')
+                                           'name label local_label folder filename category')
                 for data in c.fetchall():
                     assetData = AssetDataItem(*data)._asdict()
-                    tmb = QPixmap()
-                    tmb.loadFromData(bytes(assetData.get('THUMBNAIL')))
-                    icon = QIcon(tmb)
-                    item = QListWidgetItem(icon, assetData.get('LABEL'), self.assetList)
+                    # tmb = QPixmap()
+                    # tmb.loadFromData(bytes(assetData.get('THUMBNAIL')))
+                    # icon = QIcon(tmb)
+                    icon = QIcon()
+                    item = QListWidgetItem(icon, assetData.get('label'), self.assetList)
                     item.setData(Qt.UserRole, assetData)
-                    if len(assetData.get('LABEL')) > 18:
-                        item.setToolTip(assetData.get('LABEL'))
-                    self.searchBar.addItem(icon, assetData.get('LABEL'))
+                    if len(assetData.get('label')) > 18:
+                        item.setToolTip(assetData.get('label'))
+                    self.searchBar.addItem(icon, assetData.get('label'))
                 self.assetList.blockSignals(False)
                 self.searchBar.clearEditText()
                 self.searchBar.blockSignals(False)
@@ -218,11 +218,12 @@ class CatalogWidget(QWidget):
         if reply == QMessageBox.Yes or reply is None:
             for item in items:
                 assetData = item.data(Qt.UserRole)
-                filename = os.path.join(assetData.get('FOLDER'), assetData.get('FILENAME'))
-                if assetData.get('APPLICATION ') == Application.Cinema4D:
-                    loadCinema4DAsset(filename)
-                elif assetData.get('APPLICATION') == Application.HoudiniFx:
-                    loadHoudiniAsset(filename)
+                filename = os.path.join(assetData.get('folder'), assetData.get('filename'))
+                # if assetData.get('APPLICATION ') == Application.Cinema4D:
+                #     loadCinema4DAsset(filename)
+                # elif assetData.get('APPLICATION') == Application.HoudiniFx:
+                #     loadHoudiniAsset(filename)
+                raise NotImplementedError
 
     def openAsset(self):
         reply = None
@@ -235,7 +236,7 @@ class CatalogWidget(QWidget):
         if reply == QMessageBox.Yes or reply is None:
             for item in items:
                 assetData = item.data(Qt.UserRole)
-                openFile(os.path.join(assetData.get('FOLDER'), assetData.get('FILENAME')))
+                openFile(os.path.join(assetData.get('folder'), assetData.get('filename')))
 
     def openFolder(self, folderLink):
         if sys.platform.startswith('win'):
@@ -260,7 +261,7 @@ class CatalogWidget(QWidget):
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply == QMessageBox.Yes or reply is None:
             for item in items:
-                self.openFolder(item.data(Qt.UserRole).get('FOLDER'))
+                self.openFolder(item.data(Qt.UserRole).get('folder'))
 
     def showAssetPreview(self):
         reply = None
@@ -272,7 +273,7 @@ class CatalogWidget(QWidget):
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply == QMessageBox.Yes or reply is None:
             for item in items:
-                openFile(item.data(Qt.UserRole).get('PREVIEWFILE'))
+                openFile(os.path.join(item.data(Qt.UserRole).get('folder'), 'preview.png'))
 
     def updateStatus(self):
         message = 'Assets: {0}'.format(self.assetList.count())
@@ -294,21 +295,21 @@ class CatalogWidget(QWidget):
         items = self.assetList.selectedItems()
         for item in items:
             assetData = item.data(Qt.UserRole)
-            links.append(os.path.join(assetData.get('FOLDER'), assetData.get('FILENAME')))
+            links.append(os.path.join(assetData.get('folder'), assetData.get('filename')))
         app.clipboard().setText('\n'.join(links), QClipboard.Clipboard)
 
     def copyAssetName(self):
         names = []
         items = self.assetList.selectedItems()
         for item in items:
-            names.append(item.data(Qt.UserRole).get('NAME'))
+            names.append(item.data(Qt.UserRole).get('name'))
         app.clipboard().setText('\n'.join(names), QClipboard.Clipboard)
 
     def copyAssetFolderLink(self):
         folders = []
         items = self.assetList.selectedItems()
         for item in items:
-            folders.append(item.data(Qt.UserRole).get('FOLDER'))
+            folders.append(item.data(Qt.UserRole).get('folder'))
         app.clipboard().setText('\n'.join(folders), QClipboard.Clipboard)
 
 
